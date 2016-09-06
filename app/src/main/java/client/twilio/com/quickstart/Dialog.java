@@ -9,7 +9,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.Spinner;
 
@@ -17,34 +16,6 @@ import android.widget.Spinner;
  * Created by tconnors on 3/4/16.
  */
 public class Dialog {
-
-    public static AlertDialog createRegisterDialog(DialogInterface.OnClickListener updateTokenClickListener, DialogInterface.OnClickListener cancelClickListener,
-                                                   ClientActivity.ClientProfile clientProfile, Context context){
-        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(context);
-
-        alertDialogBuilder.setIcon(R.drawable.ic_update_black_24dp);
-        alertDialogBuilder.setTitle("Register Client");
-        alertDialogBuilder.setPositiveButton("Register", updateTokenClickListener);
-        alertDialogBuilder.setNegativeButton("Cancel", cancelClickListener);
-        alertDialogBuilder.setCancelable(false);
-
-        LayoutInflater li = LayoutInflater.from(context);
-        View dialogView = li.inflate(R.layout.dialog_registration, null);
-
-        EditText clientNameEditText = (EditText) dialogView.findViewById(R.id.client_name_edittext);
-        clientNameEditText.setText(clientProfile.getName());
-        clientNameEditText.setSelection(clientNameEditText.getText().length());
-
-        CheckBox allowOutgoingCxBx = (CheckBox) dialogView.findViewById(R.id.outgoing_checkbox);
-        allowOutgoingCxBx.setChecked(clientProfile.isAllowOutgoing());
-
-        CheckBox allowIncomingCxBx = (CheckBox) dialogView.findViewById(R.id.incoming_checkbox);
-        allowIncomingCxBx.setChecked(clientProfile.isAllowIncoming());
-
-        alertDialogBuilder.setView(dialogView);
-
-        return alertDialogBuilder.create();
-    }
 
     public static AlertDialog createCallDialog(DialogInterface.OnClickListener callClickListener, DialogInterface.OnClickListener cancelClickListener, final Context context){
         AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(context);

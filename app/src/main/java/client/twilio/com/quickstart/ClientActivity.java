@@ -7,7 +7,6 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
@@ -20,13 +19,13 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.CheckBox;
 import android.widget.Chronometer;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.gson.JsonObject;
 import com.koushikdutta.async.future.FutureCallback;
 import com.koushikdutta.ion.Ion;
 import com.twilio.client.Connection;
@@ -69,32 +68,9 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
     private int savedAudioMode = AudioManager.MODE_INVALID;
 
     /*
-     * A representation of the current properties of a client token
+     * Current identity of user
      */
-    protected class ClientProfile {
-        private String name;
-        private boolean allowOutgoing = true;
-        private boolean allowIncoming = true;
-
-
-        public ClientProfile(String name, boolean allowOutgoing, boolean allowIncoming) {
-            this.name = name;
-            this.allowOutgoing = allowOutgoing;
-            this.allowIncoming = allowIncoming;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public boolean isAllowOutgoing() {
-            return allowOutgoing;
-        }
-
-        public boolean isAllowIncoming() {
-            return allowIncoming;
-        }
-    }
+    private String identityName = "";
 
     /*
      * Android application UI elements
@@ -103,7 +79,6 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
     private FloatingActionButton muteActionFab;
     private FloatingActionButton speakerActionFab;
     private FloatingActionButton hangupActionFab;
-    private ClientProfile clientProfile;
     private AlertDialog alertDialog;
     private Chronometer chronometer;
     private View callView;
@@ -125,11 +100,6 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
         muteActionFab = (FloatingActionButton) findViewById(R.id.mute_action_fab);
         speakerActionFab = (FloatingActionButton) findViewById(R.id.speaker_action_fab);
         chronometer = (Chronometer) findViewById(R.id.chronometer);
-
-        /*
-         * Create a default profile (name=jenny, allowOutgoing=true, allowIncoming=true)
-         */
-        clientProfile = new ClientProfile("jenny", true, true);
 
         /*
          * Needed for setting/abandoning audio focus during call
@@ -173,7 +143,7 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
                     /*
                      * Retrieve the Capability Token from your own web server
                      */
-                    retrieveCapabilityToken(clientProfile);
+                    retrieveCapabilityToken();
                 }
 
                 @Override
@@ -211,13 +181,7 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
             }
 
             TextView clientNameTextView = (TextView) capabilityPropertiesView.findViewById(R.id.client_name_registered_text);
-            clientNameTextView.setText("Client Name: " + ClientActivity.this.clientProfile.getName());
-
-            TextView outgoingCapabilityTextView = (TextView) capabilityPropertiesView.findViewById(R.id.outgoing_capability_registered_text);
-            outgoingCapabilityTextView.setText("Outgoing Capability: " +Boolean.toString(ClientActivity.this.clientProfile.isAllowOutgoing()));
-
-            TextView incomingCapabilityTextView = (TextView) capabilityPropertiesView.findViewById(R.id.incoming_capability_registered_text);
-            incomingCapabilityTextView.setText("Incoming Capability: " +Boolean.toString(ClientActivity.this.clientProfile.isAllowIncoming()));
+            clientNameTextView.setText("Client Name: " + identityName);
 
             TextView libraryVersionTextView = (TextView) capabilityPropertiesView.findViewById(R.id.library_version_text);
             libraryVersionTextView.setText("Library Version: " + Twilio.getVersion());
@@ -268,31 +232,24 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
     /*
      * Request a Capability Token from your public accessible server
      */
-    private void retrieveCapabilityToken(final ClientProfile newClientProfile) {
+    private void retrieveCapabilityToken() {
 
-        // Correlate desired properties of the Device (from ClientProfile) to properties of the Capability Token
-        Uri.Builder b = Uri.parse(TOKEN_SERVICE_URL).buildUpon();
-        if (newClientProfile.isAllowOutgoing()) {
-            b.appendQueryParameter("allowOutgoing", newClientProfile.allowOutgoing ? "true" : "false");
-        }
-        if (newClientProfile.isAllowIncoming() && newClientProfile.getName() != null) {
-            b.appendQueryParameter("client", newClientProfile.getName());
-        }
 
         Ion.with(getApplicationContext())
-                .load(b.toString())
-                .asString()
-                .setCallback(new FutureCallback<String>() {
+                .load(TOKEN_SERVICE_URL)
+                .asJsonObject()
+                .setCallback(new FutureCallback<JsonObject>() {
                     @Override
-                    public void onCompleted(Exception e, String capabilityToken) {
+                    public void onCompleted(Exception e, JsonObject response) {
                         if (e == null) {
-                            Log.d(TAG, capabilityToken);
+                            Log.d(TAG, response.get("token").getAsString());
 
-                            // Update the current Client Profile to represent current properties
-                            ClientActivity.this.clientProfile = newClientProfile;
+                            // Update the current Identity Name to represent the randomly
+                            // generated identity from the server
+                            ClientActivity.this.identityName = response.get("identity").getAsString();
 
                             // Create a Device with the Capability Token
-                            createDevice(capabilityToken);
+                            createDevice(response.get("token").getAsString());
                         } else {
                             Log.e(TAG, "Error retrieving token: " + e.toString());
                             Toast.makeText(ClientActivity.this, "Error retrieving token", Toast.LENGTH_SHORT).show();
@@ -392,14 +349,6 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
     }
 
     /*
-     * Creates an update token UI dialog
-     */
-    private void updateClientProfileDialog() {
-        alertDialog = Dialog.createRegisterDialog(updateTokenClickListener(), cancelCallClickListener(), clientProfile, this);
-        alertDialog.show();
-    }
-
-    /*
      * Create an outgoing call UI dialog
      */
     private void showCallDialog() {
@@ -453,19 +402,8 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
 
             @Override
             public void onClick(DialogInterface dialog, int which) {
-
-                EditText clientEditText = (EditText) ((AlertDialog) dialog).findViewById(R.id.client_name_edittext);
-                String clientName = clientEditText.getText().toString();
-
-                CheckBox outgoingCheckBox = (CheckBox) ((AlertDialog) dialog).findViewById(R.id.outgoing_checkbox);
-                boolean allowOutgoing = outgoingCheckBox.isChecked();
-
-                CheckBox incomingCheckBox = (CheckBox) ((AlertDialog) dialog).findViewById(R.id.incoming_checkbox);
-                boolean allowIncoming = incomingCheckBox.isChecked();
-
-                ClientProfile newClientProfile = new ClientProfile(clientName, allowOutgoing, allowIncoming);
                 alertDialog.dismiss();
-                retrieveCapabilityToken(newClientProfile);
+                retrieveCapabilityToken();
             }
         };
     }
@@ -634,9 +572,6 @@ public class ClientActivity extends AppCompatActivity implements DeviceListener,
     @Override
     public boolean onOptionsItemSelected(MenuItem menuItem) {
         switch (menuItem.getItemId()) {
-            case R.id.action_update_capability:
-                updateClientProfileDialog();
-                return true;
             default:
                 return true;
         }
